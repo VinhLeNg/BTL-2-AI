@@ -4,6 +4,7 @@ from colorama import Style
 from enum import Enum
 from re import match
 from random import choice
+from random import random
 
 def print_bitboard(bitboard: int) -> None:
     square = 63
@@ -121,8 +122,8 @@ class Chess:
             print(Style.RESET_ALL)
         print(f"  a b c d e f g h")
         print("---White" if self._side_to_move == 0 else "---Black", "to move---")
-        print("En passant:", self._en_passant)
-        print(f'Castling right:\nWhite: {self._castle[0, "K"]}, {self._castle[0, "Q"]}\nBlack: {self._castle[1, "K"]}, {self._castle[1, "Q"]}')
+        # print("En passant:", self._en_passant)
+        # print(f'Castling right:\nWhite: {self._castle[0, "K"]}, {self._castle[0, "Q"]}\nBlack: {self._castle[1, "K"]}, {self._castle[1, "Q"]}')
 
     def generate_move(self):
         """
@@ -164,6 +165,7 @@ class Chess:
                         des_square = get_rm_bit1_idx(attacks)
                         # 2.1. Promotion
                         if src_square >= seventh_rank_h and src_square <= seventh_rank_a:
+                            promotion = [1, 2, 3, 4] if side == 0 else [7, 8, 9, 10]
                             for promoted_piece in promotion:
                                 lst.append(encoder(src_square, des_square, piece, promoted_piece, 1, 0, 0, 0))
                         # 2.2. Normal capture
@@ -201,10 +203,10 @@ class Chess:
                         attacks ^= (1 << des_square)
                     # castle
                     if not self._is_attacked(src_square):
-                        f, g, c, d = (Sqr["f1"], Sqr["g1"], Sqr["c1"], Sqr["d1"]) if side == 0 else (Sqr["f8"], Sqr["g8"], Sqr["c8"], Sqr["d8"])
+                        f, g, c, d, b = (Sqr["f1"], Sqr["g1"], Sqr["c1"], Sqr["d1"], Sqr["b1"]) if side == 0 else (Sqr["f8"], Sqr["g8"], Sqr["c8"], Sqr["d8"], Sqr["b8"])
                         if self._castle[side, "K"] and not self._is_attacked(f) and not self._is_attacked(g) and get_bit(self._occupancy[2], f) == 0 and get_bit(self._occupancy[2], g) == 0:
                             lst.append(encoder(src_square, g, piece, 0, 0, 0, 0, 1))
-                        if self._castle[side, "Q"] and not self._is_attacked(d) and not self._is_attacked(c) and get_bit(self._occupancy[2], c) == 0 and get_bit(self._occupancy[2], d) == 0:
+                        if self._castle[side, "Q"] and not self._is_attacked(d) and not self._is_attacked(c) and get_bit(self._occupancy[2], c) == 0 and get_bit(self._occupancy[2], d) == 0 and get_bit(self._occupancy[2], b):
                             lst.append(encoder(src_square, c, piece, 0, 0, 0, 0, 1))
                 # if is bishop
                 elif r == 3:
@@ -275,8 +277,8 @@ class Chess:
             for opponent_piece in pieces[opponent]:
                 if get_bit(self._bitboards[opponent_piece], des):
                     self._pop_bit(opponent_piece, des)
-
                     self._occupancy[opponent] ^= (1 << des)
+                    break
             self._fifty = 0
         elif piece == 5 or piece == 11: # pawn move
             self._fifty = 0
@@ -337,6 +339,13 @@ class Chess:
         # return
         return old_state
     
+    def play(self, plr1, plr2):
+        while True:
+            if (ret := plr1()) != None:
+                return -1 if ret == 1 else 0
+            if plr2() != None:
+                return 1 if ret == 1 else 0
+    
     def get_legal_move(self) -> list[int]:
         """from the list of pseudo legal moves, get legal moves"""
         move_lst = []
@@ -346,69 +355,46 @@ class Chess:
                 self.undo_move(old_state)
         return move_lst
     
-    def is_goal_state(self, lst: list[int]):
-        if len(lst) == 0:
-            king = "K" if self._side_to_move == 0 else "k"
-            king_square = get_rm_bit1_idx(self._bitboards[king])
-            if self._is_attacked(king_square):
-                return 1 # checkmate
-            else:
-                return 2 # draw by stalemate
-        elif self._fifty == 100:
-            return 3 # draw by fifty moves rule
-        return 0
-    
-    def play(self, plr1, plr2):
-        while True:
-            # white turn
-            move_lst = self.get_legal_move()
-            ret = self.is_goal_state(move_lst)
-            if ret:
-                if ret == 1:
-                    print("White won by checkmate")
-                elif ret == 2:
-                    print("Drawn by stalemate")
-                elif ret == 3:
-                    print("Drawn by fifty moves rule")
-                break
-            elif (old_state := plr1(move_lst)) == None:
-                print("Black won by resignation")
-                break
-            else:
-                pass # add old state to dict, for 3 fold check
-            clear_screen()
-            # black turn
-            move_lst = self.get_legal_move()
-            ret = self.is_goal_state(move_lst)
-            if ret:
-                if ret == 1:
-                    print("White won by checkmate")
-                elif ret == 2:
-                    print("Drawn by stalemate")
-                elif ret == 3:
-                    print("Drawn by fifty moves rule")
-                break
-            elif (old_state := plr2(move_lst)) == None:
-                print("White won by resignation")
-                break
-            else:
-                pass # add old state to dict, for 3 fold check
-            clear_screen()
+    def is_goal_state(self):
+        """Use this function if there is no legal move"""
+        king = "K" if self._side_to_move == 0 else "k"
+        king_square = get_rm_bit1_idx(self._bitboards[king])
+        if self._is_attacked(king_square):
+            return 1 # checkmate
+        else:
+            return 0 # draw by stalemate
     
     # human's turn
-    def human_turn(self, lst: list[int]):
+    def human_turn(self) -> int | None:
+        # clear_screen()
+        self.print()
+
+        if self._fifty == 100:
+            print("Drawn by fifty moves rule")
+            return 0
+
+        lst = self.get_legal_move()
+
+        if len(lst) == 0:
+            ret = self.is_goal_state()
+            if ret == 0:
+                print("Drawn by stalemate")
+            else:
+                print("Black" if self._side_to_move == 0 else "White", "won by checkmate")
+            return ret
+
         while True:
-            self.print()
             inp = input("Input move: ")
 
             if inp.upper() == "RESIGN":
-                return None
+                print("Black" if self._side_to_move == 0 else "White", "won by resignation")
+                return self._side_to_move ^ 1
         
-            side, promoted = self._side_to_move, 0
+            side = self._side_to_move
             if match(promotion_pattern, inp):
                 piece = 5 if side == 0 else 11
                 src, des, promoted = inp.split()
-                promoted = encode_piece[promoted] if side == 0 else encode_piece[promoted.lower()]
+                # promoted = encode_piece[promoted] if side == 0 else encode_piece[promoted.lower()]
                 src, des = Sqr[src], Sqr[des]
             elif inp == "O-O":
                 piece = 0 if side == 0 else 6
@@ -430,15 +416,37 @@ class Chess:
                 continue
 
             for move in lst:
-                lst = decoder(move)
-                if src == lst[0] and des == lst[1] and piece == lst[2] and promoted == lst[3]:
-                    return self.make_move(move)
+                decoded_move = decoder(move)
+                if src == decoded_move[0] and des == decoded_move[1] and piece == decoded_move[2]:
+                    self.make_move(move)
+                    return None
             
+            clear_screen()
             print("Illegal move")
-            continue
+            self.print()
+
     # for engine
-    def play_random_move(self, lst):
-        return self.make_move(choice(lst))
+    def play_random_move(self):
+        # clear_screen()
+        self.print()
+
+        if self._fifty == 100:
+            print("Drawn by fifty moves rule")
+            return 0
+
+        lst = self.get_legal_move()
+
+        if len(lst) == 0:
+            ret = self.is_goal_state()
+            if ret == 0:
+                print("Drawn by stalemate")
+            else:
+                print("Black" if self._side_to_move == 0 else "White", "won by checkmate")
+            return ret
+
+        self.make_move(choice(self.get_legal_move()))
+        return None
+    
     # eval 1
     def simple_eval(self) -> int:
         score = 0
@@ -448,96 +456,99 @@ class Chess:
             score -= bits_count(self._bitboards[piece]) * piece_value[piece.upper()]
         return score
     
-    def minimax(self, depth: int, minimize: bool):
-        lst = self.get_legal_move()
-
-        if (ret := self.is_goal_state(lst)) not in [0, 1]:
-            print("eval =", 0)
+    def alphabeta(self, depth, alpha, beta, minimizing: bool):
+        if depth == 0:
+            return self.simple_eval(), None
+        elif self._fifty == 100:
             return 0, None
-        elif ret == 1:
-            val = -1000 if self._side_to_move == 0 else 1000
-            print("eval =", val)
-            return val, None
-        elif depth == 0:
-            val = self.simple_eval()
-            print("eval =", val)
-            return val, None
+
+        if minimizing:
+            val, best_move = 10001, None
+            for move in self.generate_move():
+                if(old_state := self.make_move(move)):
+                    child_val, _ = self.alphabeta(depth - 1, alpha, beta, False)
+
+                    if val > child_val:
+                        val = child_val
+                        best_move = move
+                    elif val == child_val and random() > .5:
+                        best_move = move
+                        
+                    self.undo_move(old_state)
+
+                    if val < alpha:
+                        break # alpha cutoff
+
+                    beta = min(beta, val)
         
-        if minimize:
-            val, best_move = 1000, None
-            for move in lst:
-                old_state = self.make_move(move)
-                child_val, _ = self.minimax(depth - 1, False)
-                if val > child_val:
-                    val = child_val
-                    best_move = move
-                self.undo_move(old_state)
         else:
-            val, best_move = -1000, None
-            for move in lst:
-                old_state = self.make_move(move)
-                child_val, _ = self.minimax(depth, True)
-                if val < child_val:
-                    val = child_val
-                    best_move = move
-                self.undo_move(old_state)
-        
+            val, best_move = -10001, None
+            for move in self.generate_move():
+                if(old_state := self.make_move(move)):
+                    child_val, _ = self.alphabeta(depth - 1, alpha, beta, True)
+                    if val < child_val:
+                        val = child_val
+                        best_move = move
+                    elif val == child_val and random() > .5:
+                        best_move = move
+
+                    self.undo_move(old_state)
+
+                    if val > beta:
+                        break # beta cutoff
+
+                    alpha = max(alpha, val)
+
+        if best_move == None:
+            if self.is_goal_state() == 1:
+                val = 10000 if self._side_to_move == 1 else -10000
+            else:
+                val = 0
+            
         return val, best_move
     
-    def alphabeta(self, depth, alpha, beta, minimize: bool):
-        lst = self.get_legal_move()
-        if depth:
-            print(f"depth = {depth}, num(child) = {len(lst)}")
-        if (ret := self.is_goal_state(lst)) not in [0, 1]:
-            return 0, None
-        elif ret == 1:
-            val = -1000 if self._side_to_move == 0 else 1000
-            return val, None
-        elif depth == 0:
-            val = self.simple_eval()
-            return val, None
+    def bot_turn_v1(self, depth: int) -> int:
+        # clear_screen()
+        self.print()
+
+        if self._fifty == 100:
+            print("Draw by fifty moves rule")
+            return 0
+
+        print("Bot is thinking...")
+        eval, best_move = self.alphabeta(depth * 2, -10001, 10001, self._side_to_move == 1)
+        print(f"Eval score: {eval}")
         
-        if minimize:
-            val, best_move = 1000, None
-            for move in lst:
-                old_state = self.make_move(move)
-                child_val, _ = self.alphabeta(depth - 1, alpha, beta, False)
-                if val > child_val:
-                    val = child_val
-                    best_move = move
-                self.undo_move(old_state)
+        if best_move == None:
+            if eval == 0:
+                print("Draw by stalemate")
+                return 0
+            if eval > 0:
+                print("White won by checkmate")
+            else:
+                print("Black won by checkmate")
+            return 1
 
-                if val < alpha:
-                    break
-
-                beta = min(beta, val)
-        else:
-            val, best_move = -1000, None
-            for move in lst:
-                old_state = self.make_move(move)
-                child_val, _ = self.alphabeta(depth - 1, alpha, beta, False)
-                if val < child_val:
-                    val = child_val
-                    best_move = move
-                self.undo_move(old_state)
-
-                if val > beta:
-                    break
-
-                alpha = max(alpha, val)
-        
-        return val, best_move
-    
-    def bot_turn_v1(self, lst: list[int], play_as_black: bool):
-        val, best_move = self.alphabeta(3, -1000, 1000, play_as_black)
-        return self.make_move(best_move)
+        self.make_move(best_move)
+        return None
     
     def main(self):
         self.reset_board()
         clear_screen()
-        inp = int(input("CHESS\n1/PvP\n2/PvE\nChoose mode: "))
+        inp = int(input("CHESS\n1/PvP\n2/PvE\n3/Bot vs Random move\nChoose mode: "))
         clear_screen()
         if inp == 1:
-            self.play(plr1 = lambda x: self.human_turn(x), plr2 = lambda x: self.human_turn(x))
+            self.play(plr1 = lambda: self.human_turn(), plr2 = lambda: self.human_turn())
         elif inp == 2:
-            self.play(plr1 = lambda x: self.human_turn(x), plr2 = lambda x: self.bot_turn_v1(x, True))
+            clear_screen()
+            inp = int(input("You chose PvE mode!\n1/White\n2/Black\nYou play as: "))
+            if inp == 1:
+                self.play(plr1 = lambda: self.human_turn(), plr2 = lambda: self.bot_turn_v1(5))
+            elif inp == 2:
+                self.play(plr1 = lambda: self.bot_turn_v1(5), plr2 = lambda: self.human_turn())
+        elif inp == 3:
+            inp = int(input("Easy mode bot vs random move\n1/White\n2/Black\nBot play as: "))
+            if inp == 1:
+                self.play(plr1 = lambda: self.bot_turn_v1(2), plr2 = lambda: self.play_random_move())
+            elif inp == 2:
+                self.play(plr1 = lambda: self.play_random_move(), plr2 = lambda: self.bot_turn_v1(2))
