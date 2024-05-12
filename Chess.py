@@ -3,8 +3,7 @@ from helper import get_bit, get_rm_bit1_idx, encoder, decoder, get_bishop_attack
 from colorama import Style
 from enum import Enum
 from re import match
-from random import choice
-from random import random
+from random import choice, random
 
 def print_bitboard(bitboard: int) -> None:
     square = 63
@@ -158,7 +157,8 @@ class Chess:
                         # 1.3. double pawn push
                         if src_square >= second_rank_h and src_square <= second_rank_a:
                             des_square = src_square + 16 if side == 0 else src_square - 16
-                            lst.append(encoder(src_square, des_square, piece, 0, 0, 1, 0, 0))
+                            if get_bit(self._occupancy[2], des_square) == 0:
+                                lst.append(encoder(src_square, des_square, piece, 0, 0, 1, 0, 0))
                     # 2. pawn capture
                     attacks = pawn_attacks[src_square, side] & self._occupancy[opponent]
                     while attacks:
@@ -206,7 +206,7 @@ class Chess:
                         f, g, c, d, b = (Sqr["f1"], Sqr["g1"], Sqr["c1"], Sqr["d1"], Sqr["b1"]) if side == 0 else (Sqr["f8"], Sqr["g8"], Sqr["c8"], Sqr["d8"], Sqr["b8"])
                         if self._castle[side, "K"] and not self._is_attacked(f) and not self._is_attacked(g) and get_bit(self._occupancy[2], f) == 0 and get_bit(self._occupancy[2], g) == 0:
                             lst.append(encoder(src_square, g, piece, 0, 0, 0, 0, 1))
-                        if self._castle[side, "Q"] and not self._is_attacked(d) and not self._is_attacked(c) and get_bit(self._occupancy[2], c) == 0 and get_bit(self._occupancy[2], d) == 0 and get_bit(self._occupancy[2], b):
+                        if self._castle[side, "Q"] and not self._is_attacked(d) and not self._is_attacked(c) and get_bit(self._occupancy[2], c) == 0 and get_bit(self._occupancy[2], d) == 0 and get_bit(self._occupancy[2], b) == 0:
                             lst.append(encoder(src_square, c, piece, 0, 0, 0, 0, 1))
                 # if is bishop
                 elif r == 3:
@@ -278,8 +278,22 @@ class Chess:
                 if get_bit(self._bitboards[opponent_piece], des):
                     self._pop_bit(opponent_piece, des)
                     self._occupancy[opponent] ^= (1 << des)
+
+                    if opponent_piece == "r":
+                        if des == 56:
+                            self._castle[1, "K"] = False
+                        elif des == 63:
+                            self._castle[1, "Q"] = False
+
+                    elif opponent_piece == "R":
+                        if des == 56:
+                            self._castle[0, "K"] = False
+                        elif des == 7:
+                            self._castle[0, "Q"] = False
+                        
                     break
             self._fifty = 0
+
         elif piece == 5 or piece == 11: # pawn move
             self._fifty = 0
         else:
@@ -456,43 +470,68 @@ class Chess:
             score -= bits_count(self._bitboards[piece]) * piece_value[piece.upper()]
         return score
     
-    def alphabeta(self, depth, alpha, beta, minimizing: bool):
+    def eval_v2(self) -> float:
+        score = {0: 0, 1: 0}
+        for side in [0, 1]:
+            for piece in pieces[side]:
+                bitboard = self._bitboards[piece]
+                piece = piece.upper()
+                val = piece_value[piece]
+                while bitboard:
+                    score[side] += val
+                    square = get_rm_bit1_idx(bitboard)
+                    if piece == "K":
+                        atk_mask = 0.0
+                    elif piece == "N":
+                        atk_mask = knight_attacks[square]
+                    elif piece == "P":
+                        atk_mask = pawn_attacks[square, side]
+                    elif piece == "R":
+                        atk_mask = get_rook_attack(square, self._occupancy[2])
+                    elif piece == "B":
+                        atk_mask = get_bishop_attack(square, self._occupancy[2])
+                    else:
+                        atk_mask = get_queen_attack(square, self._occupancy[2])
+                    bitboard ^= (1 << square)
+                    score[side] += bits_count(atk_mask) / 1000.0
+        return score[0] - score[1]
+    
+    def alphabeta(self, depth, alpha, beta, eval_func):
         if depth == 0:
-            return self.simple_eval(), None
+            return eval_func(), None
         elif self._fifty == 100:
             return 0, None
 
-        if minimizing:
+        if self._side_to_move == 1: # minimize
             val, best_move = 10001, None
             for move in self.generate_move():
                 if(old_state := self.make_move(move)):
-                    child_val, _ = self.alphabeta(depth - 1, alpha, beta, False)
+                    child_val, _ = self.alphabeta(depth - 1, alpha, beta, eval_func)
+                    self.undo_move(old_state)
 
                     if val > child_val:
                         val = child_val
                         best_move = move
-                    elif val == child_val and random() > .5:
+                    elif abs(val - child_val) < 0.2 and random() > .5:
                         best_move = move
-                        
-                    self.undo_move(old_state)
 
                     if val < alpha:
                         break # alpha cutoff
-
+                                            
                     beta = min(beta, val)
         
         else:
             val, best_move = -10001, None
             for move in self.generate_move():
                 if(old_state := self.make_move(move)):
-                    child_val, _ = self.alphabeta(depth - 1, alpha, beta, True)
+                    child_val, _ = self.alphabeta(depth - 1, alpha, beta, eval_func)
+                    self.undo_move(old_state)
+
                     if val < child_val:
                         val = child_val
                         best_move = move
-                    elif val == child_val and random() > .5:
+                    elif abs(val - child_val) < 0.2 and random() > .5:
                         best_move = move
-
-                    self.undo_move(old_state)
 
                     if val > beta:
                         break # beta cutoff
@@ -516,7 +555,32 @@ class Chess:
             return 0
 
         print("Bot is thinking...")
-        eval, best_move = self.alphabeta(depth * 2, -10001, 10001, self._side_to_move == 1)
+        eval, best_move = self.alphabeta(depth * 2, -10001, 10001, lambda: self.simple_eval())
+        print(f"Eval score: {eval}")
+        
+        if best_move == None:
+            if eval == 0:
+                print("Draw by stalemate")
+                return 0
+            if eval > 0:
+                print("White won by checkmate")
+            else:
+                print("Black won by checkmate")
+            return 1
+
+        self.make_move(best_move)
+        return None
+    
+    def bot_turn_v2(self, depth: int) -> int:
+        # clear_screen()
+        self.print()
+
+        if self._fifty == 100:
+            print("Draw by fifty moves rule")
+            return 0
+
+        print("Bot is thinking...")
+        eval, best_move = self.alphabeta(depth * 2, -10001, 10001, lambda: self.eval_v2())
         print(f"Eval score: {eval}")
         
         if best_move == None:
@@ -541,14 +605,40 @@ class Chess:
             self.play(plr1 = lambda: self.human_turn(), plr2 = lambda: self.human_turn())
         elif inp == 2:
             clear_screen()
-            inp = int(input("You chose PvE mode!\n1/White\n2/Black\nYou play as: "))
-            if inp == 1:
-                self.play(plr1 = lambda: self.human_turn(), plr2 = lambda: self.bot_turn_v1(5))
+            inp = int(input("You chose PvE mode!\nLv 0\nLvl 1\nLvl 2\nLvl 3\nLvl 4\nLvl 5\nDifficulty? "))
+            if inp == 0:
+                plr2 = lambda: self.play_random_move()
+            elif inp == 1:
+                plr2 = lambda: self.bot_turn_v1(2)
             elif inp == 2:
-                self.play(plr1 = lambda: self.bot_turn_v1(5), plr2 = lambda: self.human_turn())
+                print("Warning: Bot takes a very long time to think")
+                plr2 = lambda: self.bot_turn_v1(3)
+            elif inp == 3:
+                print("Warning: Bot takes a very long time to think")
+                plr2 = lambda: self.bot_turn_v1(5)
+            elif inp == 4:
+                print("Warning: Bot takes a very long time to think")
+                plr2 = lambda: self.bot_turn_v2(5)
+            elif inp == 5:
+                print("Ehehehehhe I am stockfish")
+                print("Warning: Bot takes a very long time to think")
+                plr2 = lambda: self.bot_turn_v2(17)
+            else:
+                print("Invalid input")
+                exit()
+
+            inp = int(input("1/White\n2/Black\nYou play as: "))
+            if inp == 1:
+                self.play(plr1 = lambda: self.human_turn(), plr2 = plr2)
+            elif inp == 2:
+                self.play(plr1 = lambda: plr2, plr2 = lambda: self.human_turn())
         elif inp == 3:
             inp = int(input("Easy mode bot vs random move\n1/White\n2/Black\nBot play as: "))
             if inp == 1:
                 self.play(plr1 = lambda: self.bot_turn_v1(2), plr2 = lambda: self.play_random_move())
             elif inp == 2:
                 self.play(plr1 = lambda: self.play_random_move(), plr2 = lambda: self.bot_turn_v1(2))
+            else:
+                print("Invalid input")
+        else:
+            print("Invalid input")

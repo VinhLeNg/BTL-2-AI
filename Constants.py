@@ -92,8 +92,7 @@ unicode_chars = {
 }
 
 color = { True: Back.GREEN, False: Back.WHITE }
-
-pieces = { 0: ["K", "Q", "R", "B", "N", "P"], 1: ["k", "q", "r", "b", "n", "p"] }
+pieces = {0: ["P", "N", "B", "R", "Q", "K"], 1: ["p", "n", "b", "r", "q", "k"]}
 # convert piece format (string to int)
 encode_piece = {
     "K": 0, "Q": 1, "R": 2, "B": 3, "N": 4, "P": 5,
