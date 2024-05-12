@@ -1,0 +1,27 @@
+Xem cách sinh magic number: chạy file MagicNumber.py
+Chơi: Bấm chạy file main.py
+
+Chế độ PvP: Gõ 1
+CHế độ PvE: gõ 2
+Lưu ý: Agent có 6 level. Tuy nhiên thì chỉ có 2 level chạy đủ nhanh là level 0 và level 1.
+level 0: agent đánh ngẫu nhiên
+level 1: agent tính trước 2 nước (depth = 4), dùng hàm lượng giá là tổng giá trị các quân
+level 2: agent tính trước 3 nước
+level 3: agent tính trước 5 nước
+level 4: agent tính trước 5 nước, dùng hàm lượng gía là tổng giá trị quân cờ + 1 / 1000.0 * tổng số ô kiểm soát của từng quân
+level 5: agent tính trước 17 nước =)))))
+Chế độ vs Random Agent: là chế độ mà agent level 0 đấu với agent level 1 --> gõ 3
+
+Cách nhập tọa độ:
+Đối với tốt:
+- nước đi thông thường: [ô đang ở] [ô đến]
+   + vd: e2 e4
+- nước phong cấp: [ô đang ở] [ô đến] [quân muốn phong cấp: Q, N, R, B]
+   + vd: e7 e8 Q
+Đối với các quân khác: [Tên quân: K, N, Q, R, B] [ô đang ở] [ô đến]
+   + vd: K e1 e2
+Nhập thành:
+- Nhập thành ngắn: O-O
+- Nhập thành dài: O-O-O
+
+------------------Lê Ngọc Vinh
